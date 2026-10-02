@@ -1,0 +1,28 @@
+# Visual Studio 캐시/빌드 산출물
+.vs/
+Debug/
+Release/
+ipch/
+*.ncb
+*.sdf
+*.suo
+*.suo.old
+*.aps
+*.user
+*.VC.db
+*.VC.opendb
+*.ilk
+*.obj
+*.pch
+*.idb
+*.tlog
+*.log
+
+# CxImage 빌드 중간물 (x86/lib의 *_wd.lib는 커밋함)
+cximage/x86/bin/
+cximage/x86/xbuild/
+cximage/**/x86/xbuild/
+cximage/CxImage/CxImageDLL/x86/
+
+# 실행 중 생성되는 결과 이미지 (보고서용은 TeamProject1/DOC에 저장)
+*.tmp
