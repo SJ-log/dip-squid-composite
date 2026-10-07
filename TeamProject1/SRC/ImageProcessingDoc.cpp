@@ -89,6 +89,22 @@ void CImageProcessingDoc::Serialize(CArchive& ar)
 	}
 }
 
+// File > Save / Save As 시 호출됨
+// Serialize()를 거치지 않고 CxImage로 직접 저장
+BOOL CImageProcessingDoc::OnSaveDocument(LPCTSTR lpszPathName)
+{
+	if (m_pImage == NULL)
+		return FALSE;
+
+	CString strExt = FindExtension(lpszPathName);   // "png", "jpg" 등
+
+	if (!m_pImage->Save(lpszPathName, FindType(strExt)))
+		return FALSE;
+
+	SetModifiedFlag(FALSE);   // 저장했으니 "수정됨" 표시 해제
+	return TRUE;
+}
+
 
 // CImageProcessingDoc diagnosis
 
@@ -262,39 +278,71 @@ void CImageProcessingDoc::OnProcessMosaic()
 	UpdateAllViews(NULL);
 }
 
+// 계산 결과를 0~255 범위로 자르기(클램핑)
+static BYTE ClampToByte(int value)
+{
+	if (value < 0) return 0;
+	if (value > 255) return 255;
+	return (BYTE)value;
+}
+
 void CImageProcessingDoc::OnProcessComposite()
 {
-	// TODO: Add a composite code here
-	if (m_pImage) {
-		DlgCompositeOption dlg;
+	if (m_pImage == NULL)
+		return;
 
-		if (dlg.DoModal() == IDOK) {
-			int nOperatorID = dlg.GetCompositeOperatorID();
-			CxImage * pSecondImage = dlg.GetSecondImage();
+	DlgCompositeOption dlg;
+	if (dlg.DoModal() != IDOK)
+		return;
 
-			DWORD width = m_pImage->GetWidth();
-			DWORD height = m_pImage->GetHeight();
-			RGBQUAD firstColor;
-			RGBQUAD secondColor;
-			RGBQUAD newColor;
+	int nOperatorID = dlg.GetCompositeOperatorID();
+	CxImage* pSecondImage = dlg.GetSecondImage();
+	if (pSecondImage == NULL)
+		return;
 
-			for (DWORD y = 0; y < height; y++) {
-				for (DWORD x = 0; x < width; x++) {
-					firstColor = m_pImage->GetPixelColor(x, y);
-					secondColor = pSecondImage->GetPixelColor(x, y);
+	// 두 이미지 크기가 다르면 겹치는 영역만 처리
+	DWORD width = m_pImage->GetWidth();
+	DWORD height = m_pImage->GetHeight();
+	if (pSecondImage->GetWidth() < width) width = pSecondImage->GetWidth();
+	if (pSecondImage->GetHeight() < height) height = pSecondImage->GetHeight();
 
-					newColor.rgbBlue  = (BYTE)RGB2GRAY(secondColor.rgbRed, secondColor.rgbGreen, secondColor.rgbBlue);
-					newColor.rgbGreen = (BYTE)RGB2GRAY(secondColor.rgbRed, secondColor.rgbGreen, secondColor.rgbBlue);
-					newColor.rgbRed   = (BYTE)RGB2GRAY(secondColor.rgbRed, secondColor.rgbGreen, secondColor.rgbBlue);
+	for (DWORD y = 0; y < height; y++) {
+		for (DWORD x = 0; x < width; x++) {
+			RGBQUAD first = m_pImage->GetPixelColor(x, y);
+			RGBQUAD second = pSecondImage->GetPixelColor(x, y);
 
-					m_pImage->SetPixelColor(x, y, newColor);
-				}
+			int r = first.rgbRed;
+			int g = first.rgbGreen;
+			int b = first.rgbBlue;
+
+			switch (nOperatorID) {
+			case 0:   // 더하기
+				r = first.rgbRed + second.rgbRed;
+				g = first.rgbGreen + second.rgbGreen;
+				b = first.rgbBlue + second.rgbBlue;
+				break;
+			case 1:   // 빼기
+				r = first.rgbRed - second.rgbRed;
+				g = first.rgbGreen - second.rgbGreen;
+				b = first.rgbBlue - second.rgbBlue;
+				break;
+			default:  // 곱하기·나누기는 나중에 구현 (지금은 원본 유지)
+				break;
 			}
+
+			RGBQUAD result = first;            // 알파 등 나머지 값은 원본 유지
+			result.rgbRed = ClampToByte(r);
+			result.rgbGreen = ClampToByte(g);
+			result.rgbBlue = ClampToByte(b);
+
+			m_pImage->SetPixelColor(x, y, result);
 		}
 	}
 
+
+	SetModifiedFlag(TRUE);    // 이미지가 바뀌었다고 표시
 	CalculateHistogram();
-	UpdateAllViews(NULL);
+	UpdateAllViews(NULL);     // 화면 다시 그리기
 }
 
 void CImageProcessingDoc::OnProcessIntensityTransform()

@@ -43,6 +43,7 @@ public:
 	virtual BOOL OnOpenDocument(LPCTSTR lpszPathName);
 	virtual BOOL OnNewDocument();
 	virtual void Serialize(CArchive& ar);
+	virtual BOOL OnSaveDocument(LPCTSTR lpszPathName);
 
 // 구현입니다.
 public:
