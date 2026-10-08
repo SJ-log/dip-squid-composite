@@ -41,6 +41,7 @@ public:
 // 재정의입니다.
 public:
 	virtual BOOL OnOpenDocument(LPCTSTR lpszPathName);
+	virtual BOOL OnSaveDocument(LPCTSTR lpszPathName);
 	virtual BOOL OnNewDocument();
 	virtual void Serialize(CArchive& ar);
 

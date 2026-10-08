@@ -61,6 +61,34 @@ BOOL CImageProcessingDoc::OnOpenDocument(LPCTSTR lpszPathName)
 	return TRUE;
 }
 
+// 파일 저장: 기본 Serialize()는 저장 코드가 비어 있어 0바이트 파일이 만들어지므로 CxImage로 직접 저장
+BOOL CImageProcessingDoc::OnSaveDocument(LPCTSTR lpszPathName)
+{
+	if (m_pImage == NULL)
+		return FALSE;
+
+	// 원본 입력 이미지를 덮어쓰지 않도록, 열었던 파일과 같은 경로로는 저장하지 않음
+	// (FALSE를 반환하면 MFC가 Save As 대상 파일을 지워버리므로, 저장하지 않고 TRUE 반환)
+	if (GetPathName().CompareNoCase(lpszPathName) == 0) {
+		AfxMessageBox(_T("Not saved: the original image is protected. Use File > Save As with a new file name."));
+		return TRUE;
+	}
+
+	int type = FindType(FindExtension(lpszPathName));
+	if (type == CXIMAGE_FORMAT_UNKNOWN) {
+		AfxMessageBox(_T("Unsupported file extension. Please use .bmp, .png or .jpg"));
+		return FALSE;
+	}
+
+	if (!m_pImage->Save(lpszPathName, type)) {
+		AfxMessageBox(_T("Failed to save the image."));
+		return FALSE;
+	}
+
+	SetModifiedFlag(FALSE);
+	return TRUE;
+}
+
 BOOL CImageProcessingDoc::OnNewDocument()
 {
 	if (!CDocument::OnNewDocument())
@@ -262,6 +290,14 @@ void CImageProcessingDoc::OnProcessMosaic()
 	UpdateAllViews(NULL);
 }
 
+// 0~255 범위를 벗어난 값을 잘라냄 (클램핑)
+static BYTE ClampToByte(int value)
+{
+	if (value < 0)   return 0;
+	if (value > 255) return 255;
+	return (BYTE)value;
+}
+
 void CImageProcessingDoc::OnProcessComposite()
 {
 	// TODO: Add a composite code here
@@ -269,23 +305,52 @@ void CImageProcessingDoc::OnProcessComposite()
 		DlgCompositeOption dlg;
 
 		if (dlg.DoModal() == IDOK) {
-			int nOperatorID = dlg.GetCompositeOperatorID();
+			int nOperatorID = dlg.GetCompositeOperatorID();	// 0: +, 1: -, 2: x, 3: /
 			CxImage * pSecondImage = dlg.GetSecondImage();
 
-			DWORD width = m_pImage->GetWidth();
-			DWORD height = m_pImage->GetHeight();
+			if (pSecondImage == NULL) {
+				AfxMessageBox(_T("Please select the second image."));
+				return;
+			}
+			if (nOperatorID != 0 && nOperatorID != 1) {
+				AfxMessageBox(_T("Only + and - are supported."));
+				return;
+			}
+
+			DWORD width   = m_pImage->GetWidth();		// 결과 크기 = 첫 번째 이미지 크기
+			DWORD height  = m_pImage->GetHeight();
+			DWORD width2  = pSecondImage->GetWidth();
+			DWORD height2 = pSecondImage->GetHeight();
+
+			// CxImage는 아래쪽 줄이 y = 0이므로, 두 이미지를 왼쪽 위 기준으로 맞추려면 높이 차이만큼 y를 보정
+			long yOffset = (long)height - (long)height2;
+
 			RGBQUAD firstColor;
 			RGBQUAD secondColor;
 			RGBQUAD newColor;
+			RGBQUAD black = { 0, 0, 0, 0 };
 
 			for (DWORD y = 0; y < height; y++) {
+				long y2 = (long)y - yOffset;
 				for (DWORD x = 0; x < width; x++) {
 					firstColor = m_pImage->GetPixelColor(x, y);
-					secondColor = pSecondImage->GetPixelColor(x, y);
 
-					newColor.rgbBlue  = (BYTE)RGB2GRAY(secondColor.rgbRed, secondColor.rgbGreen, secondColor.rgbBlue);
-					newColor.rgbGreen = (BYTE)RGB2GRAY(secondColor.rgbRed, secondColor.rgbGreen, secondColor.rgbBlue);
-					newColor.rgbRed   = (BYTE)RGB2GRAY(secondColor.rgbRed, secondColor.rgbGreen, secondColor.rgbBlue);
+					// 두 번째 이미지 범위 밖이면 0(검정)으로 간주 → 첫 번째 이미지 값이 그대로 남음
+					if (x < width2 && y2 >= 0 && y2 < (long)height2)
+						secondColor = pSecondImage->GetPixelColor(x, y2);
+					else
+						secondColor = black;
+
+					newColor = firstColor;
+					if (nOperatorID == 0) {			// +
+						newColor.rgbRed   = ClampToByte((int)firstColor.rgbRed   + (int)secondColor.rgbRed);
+						newColor.rgbGreen = ClampToByte((int)firstColor.rgbGreen + (int)secondColor.rgbGreen);
+						newColor.rgbBlue  = ClampToByte((int)firstColor.rgbBlue  + (int)secondColor.rgbBlue);
+					} else {						// -
+						newColor.rgbRed   = ClampToByte((int)firstColor.rgbRed   - (int)secondColor.rgbRed);
+						newColor.rgbGreen = ClampToByte((int)firstColor.rgbGreen - (int)secondColor.rgbGreen);
+						newColor.rgbBlue  = ClampToByte((int)firstColor.rgbBlue  - (int)secondColor.rgbBlue);
+					}
 
 					m_pImage->SetPixelColor(x, y, newColor);
 				}
