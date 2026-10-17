@@ -24,6 +24,7 @@ public:
 
 private:
 	CxImage * m_pImage;
+	CString   m_strSourcePath;	// 처음 연 원본 파일 경로 (덮어쓰기 방지용)
 
 	long m_histogramRed[256];
 	long m_histogramGreen[256];
